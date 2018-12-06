@@ -1,3 +1,0 @@
-makefile文件中添加`CC=gcc -g -O0`进行调试，
-
-gdb ./darknet

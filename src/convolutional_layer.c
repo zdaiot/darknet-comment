@@ -258,7 +258,7 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
     }
 
     if(batch_normalize){
-        l.scales = calloc(n, sizeof(float));
+        l.scales = calloc(n, sizeof(float));  // batchnorm 层中gamma参数初始化
         l.scale_updates = calloc(n, sizeof(float));
         for(i = 0; i < n; ++i){
             l.scales[i] = 1;
@@ -574,7 +574,7 @@ void backward_convolutional_layer(convolutional_layer l, network net)
     gradient_array(l.output, l.outputs*l.batch, l.activation, l.delta);
 
     if(l.batch_normalize){
-        backward_batchnorm_layer(l, net);  // 对batchnormal 中的gamma和beta参数求偏导数
+        backward_batchnorm_layer(l, net);  // 对batchnormal 中的gamma和beta参数求偏导数，并更新 l.delta
     } else {
         backward_bias(l.bias_updates, l.delta, l.batch, l.n, k);  // 求卷积层输出 关于 偏置 b 的导数 
     }
