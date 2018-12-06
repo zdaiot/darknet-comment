@@ -1,0 +1,5 @@
+set history filename gdb.history
+set history save on
+set history size 1000
+set args detect cfg/yolov3-tiny.cfg yolov3-tiny.weights data/dog.jpg
+DIR ./src
