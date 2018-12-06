@@ -70,8 +70,8 @@ layer make_batchnorm_layer(int batch, int w, int h, int c)
 }
 
 /*
-输入：卷积操作的输出经过scale与shift后    float *x_norm
-      卷积层的输出关于 net 的导数          float *delta
+输入：卷积操作的输出(不经过scale与shift)    float *x_norm
+      损失函数关于 z 的导数               float *delta
       batch 的大小                       int batch
       卷积核的数目                       n
       每一个卷积核输出的大小              size
@@ -88,7 +88,7 @@ void backward_scale_cpu(float *x_norm, float *delta, int batch, int n, int size,
         for(b = 0; b < batch; ++b){
             for(i = 0; i < size; ++i){
                 int index = i + size*(f + n*b);
-                sum += delta[index] * x_norm[index];   // 由
+                sum += delta[index] * x_norm[index];   // 点乘并相加
             }
         }
         scale_updates[f] += sum;   // 每一个卷积核对应一个 gamma 系数
@@ -179,8 +179,8 @@ void backward_batchnorm_layer(layer l, network net)
         l.mean = l.rolling_mean;
         l.variance = l.rolling_variance;
     }
-    backward_bias(l.bias_updates, l.delta, l.batch, l.out_c, l.out_w*l.out_h);
-    backward_scale_cpu(l.x_norm, l.delta, l.batch, l.out_c, l.out_w*l.out_h, l.scale_updates);
+    backward_bias(l.bias_updates, l.delta, l.batch, l.out_c, l.out_w*l.out_h); // 求损失函数关于 beta 的偏导
+    backward_scale_cpu(l.x_norm, l.delta, l.batch, l.out_c, l.out_w*l.out_h, l.scale_updates); // 求损失函数关于 gamma 的偏导
 
     scale_bias(l.delta, l.scales, l.batch, l.out_c, l.out_h*l.out_w);
 
