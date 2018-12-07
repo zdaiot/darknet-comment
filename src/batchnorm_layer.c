@@ -95,6 +95,16 @@ void backward_scale_cpu(float *x_norm, float *delta, int batch, int n, int size,
     }
 }
 
+/*
+输入：当前的 delta                       float *delta
+      batch 的大小                       int batch
+      卷积核或神经元的数量                 filter
+      卷积核或神经元的输出大小             spatial          对于CNN 等于输出的长和宽乘积，对于DNN 等于1，保证代码具有统一性
+      损失函数关于均值的偏导              float *mean_delta
+功能：求损失函数关于均值的偏导，并放到 float *mean_delta中
+输出：损失函数关于均值的偏导  float *mean_delta
+返回：无   
+*/
 void mean_delta_cpu(float *delta, float *variance, int batch, int filters, int spatial, float *mean_delta)
 {
 
@@ -104,12 +114,26 @@ void mean_delta_cpu(float *delta, float *variance, int batch, int filters, int s
         for (j = 0; j < batch; ++j) {
             for (k = 0; k < spatial; ++k) {
                 int index = j*filters*spatial + i*spatial + k;
-                mean_delta[i] += delta[index];
+                mean_delta[i] += delta[index];   // 一个卷积核或者神经元对应一个均值，所以只和 i 有关
             }
         }
-        mean_delta[i] *= (-1./sqrt(variance[i] + .00001f));
+        mean_delta[i] *= (-1./sqrt(variance[i] + .00001f));  // 因为这个式子里面只有 i，放到外面可以减少计算量，这里应该省略了求偏导公式的第二项
     }
 }
+
+/*
+输入：batchnorm 的输入                    float *x
+      当前的 delta                       float *delta
+      均值                               float *mean
+      方差                               float *variance
+      batch 的大小                       int batch
+      卷积核或神经元的数量                 filter
+      卷积核或神经元的输出大小             spatial          对于CNN 等于输出的长和宽乘积，对于DNN 等于1，保证代码具有统一性
+      损失函数关于方差的偏导  float *variance_delta
+功能：求损失函数关于方差的偏导，并放到 float *variance_delta中
+输出：损失函数关于方差的偏导  float *variance_delta
+返回：无
+*/
 void  variance_delta_cpu(float *x, float *delta, float *mean, float *variance, int batch, int filters, int spatial, float *variance_delta)
 {
 
@@ -119,12 +143,27 @@ void  variance_delta_cpu(float *x, float *delta, float *mean, float *variance, i
         for(j = 0; j < batch; ++j){
             for(k = 0; k < spatial; ++k){
                 int index = j*filters*spatial + i*spatial + k;
-                variance_delta[i] += delta[index]*(x[index] - mean[i]);
+                variance_delta[i] += delta[index]*(x[index] - mean[i]);   // 一个卷积核或者神经元对应一个方差，所以只和 i 有关
             }
         }
-        variance_delta[i] *= -.5 * pow(variance[i] + .00001f, (float)(-3./2.));
+        variance_delta[i] *= -.5 * pow(variance[i] + .00001f, (float)(-3./2.));  // 因为这个式子里面只有 i，放到外面可以减少计算量
     }
 }
+
+/*
+输入：batchnorm 的输入                    float *x
+      均值                               float *mean
+      方差                               float *variance
+      损失函数关于均值的偏导               float *mean_delta
+      损失函数关于方差的偏导               float *variance_delta
+      batch 的大小                       int batch
+      卷积核或神经元的数量                 filter
+      卷积核或神经元的输出大小             spatial          对于CNN 等于输出的长和宽乘积，对于DNN 等于1，保证代码具有统一性
+      当前的 delta                       float *delta
+功能：求损失函数关于x的偏导，并放到 float *delta中
+输出：损失函数关于x的偏导  float *delta中
+返回：无
+*/
 void normalize_delta_cpu(float *x, float *mean, float *variance, float *mean_delta, float *variance_delta, int batch, int filters, int spatial, float *delta)
 {
     int f, j, k;
@@ -150,22 +189,22 @@ void resize_batchnorm_layer(layer *layer, int w, int h)
 */
 void forward_batchnorm_layer(layer l, network net)
 {
-    // l.type 等于 BATCHNORM 的时候，为 BATCHNORM 层。将 net.input 的值赋值为 l.output
+    // l.type 等于 BATCHNORM 的时候，为 BATCHNORM 层。将 net.input 的值赋值为 l.output，也就是说该层的输入就是batchnorm的输入，使用l.output 是为了与下面非 BATCHNORM 层的时候统一变量名
     if(l.type == BATCHNORM) copy_cpu(l.outputs*l.batch, net.input, 1, l.output, 1);  
-    copy_cpu(l.outputs*l.batch, l.output, 1, l.x, 1);  // 将 l.output 的值赋值给 l.x
+    copy_cpu(l.outputs*l.batch, l.output, 1, l.x, 1);  // batchnorm的输入为当前层输入与神经元作用后得到的l.output，所以这里将 l.output 的值赋值给 l.x
     if(net.train){
         mean_cpu(l.output, l.batch, l.out_c, l.out_h*l.out_w, l.mean);
         variance_cpu(l.output, l.mean, l.batch, l.out_c, l.out_h*l.out_w, l.variance);
 
         // l.out_c 为输出的通道数，等于卷积核的数目总数
-        scal_cpu(l.out_c, .99, l.rolling_mean, 1);    //这里的0.99是默认的gamma参数值？？？
-        axpy_cpu(l.out_c, .01, l.mean, 1, l.rolling_mean, 1);  // 0.01是默认的beta参数值？？？
+        scal_cpu(l.out_c, .99, l.rolling_mean, 1);    // 滚动平均值的方法，并简化 1/m = 0.01
+        axpy_cpu(l.out_c, .01, l.mean, 1, l.rolling_mean, 1);  
         scal_cpu(l.out_c, .99, l.rolling_variance, 1);
         axpy_cpu(l.out_c, .01, l.variance, 1, l.rolling_variance, 1);
 
         normalize_cpu(l.output, l.mean, l.variance, l.batch, l.out_c, l.out_h*l.out_w);   // 对l.output中每一个元素进行batchnormal操作并返回
         copy_cpu(l.outputs*l.batch, l.output, 1, l.x_norm, 1);  // 将l.output的值赋值给l.x_norm，在反向传播中需要使用到该函数
-    } else {   // 网络处于非训练状态时
+    } else {   // 网络处于非训练状态时，使用滚动平均的方法估计出来的均值和方差
         normalize_cpu(l.output, l.rolling_mean, l.rolling_variance, l.batch, l.out_c, l.out_h*l.out_w);
     }
     // 实现论文 http://arxiv.org/pdf/1502.03167.pdf 中的gamma和beta参数的前向计算，即scale and shift
@@ -175,19 +214,19 @@ void forward_batchnorm_layer(layer l, network net)
 
 void backward_batchnorm_layer(layer l, network net)
 {
-    if(!net.train){   // 若不是训练阶段
+    if(!net.train){   // 在推理阶段，使用从所有训练实例中获得的统计量代替全局统计量
         l.mean = l.rolling_mean;
         l.variance = l.rolling_variance;
     }
     backward_bias(l.bias_updates, l.delta, l.batch, l.out_c, l.out_w*l.out_h); // 求损失函数关于 beta 的偏导
     backward_scale_cpu(l.x_norm, l.delta, l.batch, l.out_c, l.out_w*l.out_h, l.scale_updates); // 求损失函数关于 gamma 的偏导
 
-    scale_bias(l.delta, l.scales, l.batch, l.out_c, l.out_h*l.out_w);
+    scale_bias(l.delta, l.scales, l.batch, l.out_c, l.out_h*l.out_w); // 计算损失函数关于\hat{x}的偏导，并放到 l.delta 中
 
-    mean_delta_cpu(l.delta, l.variance, l.batch, l.out_c, l.out_w*l.out_h, l.mean_delta);
-    variance_delta_cpu(l.x, l.delta, l.mean, l.variance, l.batch, l.out_c, l.out_w*l.out_h, l.variance_delta);
-    normalize_delta_cpu(l.x, l.mean, l.variance, l.mean_delta, l.variance_delta, l.batch, l.out_c, l.out_w*l.out_h, l.delta);
-    if(l.type == BATCHNORM) copy_cpu(l.outputs*l.batch, l.delta, 1, net.delta, 1);
+    mean_delta_cpu(l.delta, l.variance, l.batch, l.out_c, l.out_w*l.out_h, l.mean_delta); //计算损失函数关于均值的偏导
+    variance_delta_cpu(l.x, l.delta, l.mean, l.variance, l.batch, l.out_c, l.out_w*l.out_h, l.variance_delta); // 计算损失函数关于方差的偏导
+    normalize_delta_cpu(l.x, l.mean, l.variance, l.mean_delta, l.variance_delta, l.batch, l.out_c, l.out_w*l.out_h, l.delta); // 计算损失函数关于 x 的偏导
+    if(l.type == BATCHNORM) copy_cpu(l.outputs*l.batch, l.delta, 1, net.delta, 1);  // 如果是 BATCHNORM 层的话，将 l.delta 赋值给 net.delta，完成损失函数关于 a^{l-1}的偏导，损失函数关于 z^{l-1}的偏导在上一层的backword中完成
 }
 
 #ifdef GPU

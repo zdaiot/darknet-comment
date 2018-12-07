@@ -457,11 +457,11 @@ void add_bias(float *output, float *biases, int batch, int n, int size)
 }
 
 /*
-输入: 网络输出大小 output
+输入: 网络输出 output
       系数大小    scales
       batch大小  batch
       卷积核的数目 n
-      每次卷积输出的高和宽的乘积 size
+      每次卷积输出的高和宽的乘积 size   对于CNN 等于输出的长和宽乘积，对于DNN 等于1，保证代码具有统一性
 功能：为网络的输出乘上系数，每一个卷积核对应一个系数
 输出：经过scale操作后的float *output
 返回：无
@@ -471,8 +471,8 @@ void scale_bias(float *output, float *scales, int batch, int n, int size)
     int i,j,b;
     for(b = 0; b < batch; ++b){ // 对于每一个batch
         for(i = 0; i < n; ++i){ // 对于每一个卷积核
-            for(j = 0; j < size; ++j){ //对于每一个输出 
-                output[(b*n + i)*size + j] *= scales[i];  // 每一个卷积核均有一个系数
+            for(j = 0; j < size; ++j){ //对于每一个输出
+                output[(b*n + i)*size + j] *= scales[i];  // 每一个卷积核或神经元均有一个系数，点乘
             }
         }
     }
@@ -494,7 +494,7 @@ void backward_bias(float *bias_updates, float *delta, int batch, int n, int size
     for(b = 0; b < batch; ++b){  // 对于每一个batch
         for(i = 0; i < n; ++i){   // 对于每一个卷积核
             // 同一个batch之内，相同位置的特征图对应同一个偏置，这也可以理解为一个卷积核对应一个偏置，因此损失函数关于卷积核偏置的偏导数，等于同一个batch内相同位置 delta 的和
-            bias_updates[i] += sum_array(delta+size*(i+b*n), size);
+            bias_updates[i] += sum_array(delta+size*(i+b*n), size);  // 使用sum_array函数保证代码通用性，在CNN中size等于一个卷积核输出的特征图大小，在DNN中size等于1
         }
     }
 }
