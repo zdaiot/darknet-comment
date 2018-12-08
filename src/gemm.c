@@ -64,19 +64,21 @@ void time_random_matrix(int TA, int TB, int m, int k, int n)
 /*
 输入：TA 判断矩阵A是否转置
      TB 判断矩阵B是否转置
-     M 每组filters的数量
-     N 每次卷积输出的高和宽的乘积
-     K 将卷积核分组后，每个卷积核的参数总数
+     M,N,k 见下面功能，与矩阵A,B,C的维度对应
      ALPHA 广义矩阵乘积操作(gemm)参数
-     *A 每次batch每组权重数组的首地址
-     lda 将卷积核分组后，每个卷积核的参数总数
-     *B 重排后的图像矩阵
-     ldb 每次卷积输出的高和宽的乘积
+     *A 广义矩阵乘积操作(gemm)中的矩阵A
+     lda 矩阵*A一行有多少个元素
+     *B 广义矩阵乘积操作(gemm)中的矩阵B
+     ldb 矩阵*B一行有多少个元素
      BETA 广义矩阵乘积操作(gemm)参数
-     *C 每组每次卷积输出的数组首地址
-     ldc 每次卷积输出的高和宽的乘积，用于定位卷积输出数组元素的位置
-功能：广义矩阵乘积操作(gemm) C = ALPHA*A*B + BETA*C，这里ALPHA和BETA均取值为1
-输出：无
+     *C 广义矩阵乘积操作(gemm)中的矩阵C
+     ldc 矩阵*C一行有多少个元素
+功能：当TA=TB=0的时候，A大小为M*K，B大小为K*N，C的大小为M*N，完成广义矩阵乘积操作(gemm) C = ALPHA*A*B + BETA*C
+     当TA=1,TB=0的时候，A大小为K*M，B大小为K*N，C的大小为M*N，完成广义矩阵乘积操作(gemm) C = ALPHA*(A^T)*B + BETA*C
+     当TA=0,TB=1的时候，A大小为M*K，B大小为N*K，C的大小为M*N，完成广义矩阵乘积操作(gemm) C = ALPHA*A*(B^T) + BETA*C
+     当TA=TB=1的时候，A大小为K*M，B大小为N*K，C的大小为M*N，完成广义矩阵乘积操作(gemm) C = ALPHA*(A^T)*(B^T) + BETA*C
+输出：广义矩阵乘积结果 C
+返回：无
 */
 void gemm(int TA, int TB, int M, int N, int K, float ALPHA, 
         float *A, int lda, 
@@ -88,19 +90,18 @@ void gemm(int TA, int TB, int M, int N, int K, float ALPHA,
 }
 
 /*
-输入：M 每组filters的数量
-     N 每次卷积输出的高和宽的乘积
-     K 将卷积核分组后，每个卷积核的参数总数
+输入：M 矩阵A的行数与矩阵C的行数
+     N 矩阵B的列数与矩阵C的列数
+     K 矩阵A的列数与矩阵B的行数
      ALPHA 广义矩阵乘积操作(gemm)参数
-     *A 每次batch每组权重数组的首地址
-     lda 将卷积核分组后，每个卷积核的参数总数
-     *B 重排后的图像矩阵
-     ldb 每次卷积输出的高和宽的乘积
-     BETA 广义矩阵乘积操作(gemm)参数
-     *C 每组每次卷积输出的数组首地址
-     ldc 每次卷积输出的高和宽的乘积，用于定位卷积输出数组元素的位置
-功能：卷积操作
-输出：float *C
+     *A 广义矩阵乘积操作(gemm)中的矩阵A，大小为 M*K
+     lda 矩阵*A一行有多少个元素
+     *B 广义矩阵乘积操作(gemm)中的矩阵B，大小为 K*N
+     ldb 矩阵*B一行有多少个元素
+     *C 广义矩阵乘积操作(gemm)中的矩阵C，大小为 M*N
+     ldc 矩阵*C一行有多少个元素
+功能：矩阵乘积操作(gemm) C = ALPHA*A*B
+输出：带权的矩阵A与矩阵B相乘结果 *C
 返回：无
 */
 void gemm_nn(int M, int N, int K, float ALPHA, 
@@ -112,21 +113,45 @@ void gemm_nn(int M, int N, int K, float ALPHA,
     // OpenMP 并不是一个简单的函数库，而是一个诸多编译器支持的框架，或者说是协议吧，
     // 总之，不需要任何配置，你就可以在 Visual Studio 或者 gcc 中使用它了。
     #pragma omp parallel for // OpenMP的并行计算
-    for(i = 0; i < M; ++i){  // 对于每组每个卷积核
-        for(k = 0; k < K; ++k){  // 依次取出来每个卷积核中的每个参数
-            register float A_PART = ALPHA*A[i*lda+k]; // 寄存器变量，卷积操作中的层内卷积核参数共享
-            for(j = 0; j < N; ++j){ // 对于每个输出点
-                // C中每一个点均是由卷积核中每一个通道与输入的每一个通道对应位置点乘求和，然后所有通道求和得到。每一个卷积核产生一个特征图，所以C中使用i去乘以ldc，并每次均 +=
-                // 依次取data_im中与卷积核中每个元素点乘的所有位置排列成一维数组得到B，共有ldb*K个元素,所以可以按照 k*ldb+j 顺序访问元素
-                // A只与i和k有关,C只与i和j有关,即可完成卷积操作,C中的每一个点均由K次点乘操作得到
-
-                // 理解的时候先假设i=0，即只有一个卷积核；另外，向量右乘矩阵，等于矩阵中的每一行按照向量中的值进行加权。
+    for(i = 0; i < M; ++i){  // 对于A中的每一行或C中每一行
+        for(k = 0; k < K; ++k){  // 对于B中的每一行或A中每一列
+            register float A_PART = ALPHA*A[i*lda+k]; // 寄存器变量
+            for(j = 0; j < N; ++j){ //对于C中的每一列或B中每一列
+                // 当i,k固定，j滑动，可以理解为C中第i行是由B中各行按照A中第i行的值线性组合得到的
                 C[i*ldc+j] += A_PART*B[k*ldb+j]; 
             }
         }
     }
+
+    /*当然代码还可以这么写，只是这样写的话就A与B均无法放到第三层循环外面，增加了计算量，不过容易理解
+    int i,j,k;
+    #pragma omp parallel for // OpenMP的并行计算
+    for(i = 0; i < M; ++i){  // 对于A中的每一行
+        for(j = 0; j < N; ++j){
+            for(k = 0; k < K; ++k){  // 对于B中的每一行
+                // 当i,j固定，k滑动，可以理解为C中第i行第j列是由A中第i行与B中第j列做内积得到
+                C[i*ldc+j] +=  ALPHA*A[i*lda+k]*B[k*ldb+j]; 
+            }
+        }
+    }
+    */
 }
 
+/*
+输入：M 矩阵A的行数与矩阵C的行数
+     N 矩阵B的行数与矩阵C的列数
+     K 矩阵A的列数与矩阵B的列数
+     ALPHA 广义矩阵乘积操作(gemm)参数
+     *A 广义矩阵乘积操作(gemm)中的矩阵A，大小为 M*K
+     lda 矩阵*A一行有多少个元素
+     *B 广义矩阵乘积操作(gemm)中的矩阵B，大小为 N*K
+     ldb 矩阵*B一行有多少个元素
+     *C 广义矩阵乘积操作(gemm)中的矩阵C，大小为 M*N
+     ldc 矩阵*C一行有多少个元素
+功能：矩阵乘积操作(gemm) C = ALPHA*A*(B^T)
+输出：带权的矩阵A与矩阵B的转置相乘结果 *C
+返回：无
+*/
 void gemm_nt(int M, int N, int K, float ALPHA, 
         float *A, int lda, 
         float *B, int ldb,
@@ -134,17 +159,33 @@ void gemm_nt(int M, int N, int K, float ALPHA,
 {
     int i,j,k;
     #pragma omp parallel for 
-    for(i = 0; i < M; ++i){
-        for(j = 0; j < N; ++j){
+    for(i = 0; i < M; ++i){  // A的每一行或C中每一行
+        for(j = 0; j < N; ++j){ // B的每一行或C中每一列
             register float sum = 0;
-            for(k = 0; k < K; ++k){
+            for(k = 0; k < K; ++k){ // B的每一列或A中每一列
+                // 当i,j固定，k滑动，可以可以理解为C中第i行第j列是由A中第i行与B中第j行做内积得到
                 sum += ALPHA*A[i*lda+k]*B[j*ldb + k];
             }
-            C[i*ldc+j] += sum;
+            C[i*ldc+j] += sum;  // 用sum临时变量猜测是因为可以使用到寄存器临时变量，另外这里的 += 有什么用还不清楚
         }
     }
 }
 
+/*
+输入：M 矩阵A的列数与矩阵C的行数
+     N 矩阵B的列数与矩阵C的列数
+     K 矩阵A的行数与矩阵B的行数
+     ALPHA 广义矩阵乘积操作(gemm)参数
+     *A 广义矩阵乘积操作(gemm)中的矩阵A，大小为 K*M
+     lda 矩阵*A一行有多少个元素
+     *B 广义矩阵乘积操作(gemm)中的矩阵B，大小为 K*N
+     ldb 矩阵*B一行有多少个元素
+     *C 广义矩阵乘积操作(gemm)中的矩阵C，大小为 M*N
+     ldc 矩阵*C一行有多少个元素
+功能：矩阵乘积操作(gemm) C = ALPHA*(A^T)*B
+输出：带权的矩阵A的转置与矩阵B相乘结果 *C
+返回：无
+*/
 void gemm_tn(int M, int N, int K, float ALPHA, 
         float *A, int lda, 
         float *B, int ldb,
@@ -152,16 +193,45 @@ void gemm_tn(int M, int N, int K, float ALPHA,
 {
     int i,j,k;
     #pragma omp parallel for
-    for(i = 0; i < M; ++i){
-        for(k = 0; k < K; ++k){
+    for(i = 0; i < M; ++i){ // 对于A中每一列或C中每一行
+        for(k = 0; k < K; ++k){ // 对于B中每一行或者A中每一行
             register float A_PART = ALPHA*A[k*lda+i];
-            for(j = 0; j < N; ++j){
+            for(j = 0; j < N; ++j){ // 对于C中每一行或B中每一列
+                // 当i,k固定，j滑动，可以理解为C中第i行是由B中各行按照A中第i列的值线性组合得到的
                 C[i*ldc+j] += A_PART*B[k*ldb+j];
             }
         }
     }
+
+    /*当然代码还可以这么写，只是这样写的话就A与B均无法放到第三层循环外面，增加了计算量，不过容易理解
+    int i,j,k;
+    #pragma omp parallel for
+    for(i = 0; i < M; ++i){ // 对于A中每一列
+        for(j = 0; j < N; ++j){ // 对于C中每一行
+            for(k = 0; k < K; ++k){ // 对于B中每一行
+                // 当i,j固定，k滑动，可以理解为C中第i行第j列是由A中第i列与B中第j列做内积得到
+                C[i*ldc+j] += ALPHA*A[k*lda+i]*B[k*ldb+j];
+            }
+        }
+    }
+    */
 }
 
+/*
+输入：M 矩阵A的列数与矩阵C的行数
+     N 矩阵B的行数与矩阵C的列数
+     K 矩阵A的行数与矩阵B的列数
+     ALPHA 广义矩阵乘积操作(gemm)参数
+     *A 广义矩阵乘积操作(gemm)中的矩阵A，大小为 K*M
+     lda 矩阵*A一行有多少个元素
+     *B 广义矩阵乘积操作(gemm)中的矩阵B，大小为 N*K
+     ldb 矩阵*B一行有多少个元素
+     *C 广义矩阵乘积操作(gemm)中的矩阵C，大小为 M*N
+     ldc 矩阵*C一行有多少个元素
+功能：矩阵乘积操作(gemm) C = ALPHA*(A^T)*(B^T)
+输出：带权的矩阵A的转置与矩阵B的转置相乘结果 *C
+返回：无
+*/
 void gemm_tt(int M, int N, int K, float ALPHA, 
         float *A, int lda, 
         float *B, int ldb,
@@ -169,10 +239,11 @@ void gemm_tt(int M, int N, int K, float ALPHA,
 {
     int i,j,k;
     #pragma omp parallel for
-    for(i = 0; i < M; ++i){
-        for(j = 0; j < N; ++j){
+    for(i = 0; i < M; ++i){ // 对于A的每一列或C中每一行
+        for(j = 0; j < N; ++j){ // 对于B中每一行或C中每一列
             register float sum = 0;
-            for(k = 0; k < K; ++k){
+            for(k = 0; k < K; ++k){ // 对于B中每一列或者A中每一行
+                // 当i,j固定，k滑动，可以理解为C中第i行第j列是由A中第i列与B中第j行做内积得到
                 sum += ALPHA*A[i+k*lda]*B[k+j*ldb];
             }
             C[i*ldc+j] += sum;

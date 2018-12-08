@@ -33,7 +33,14 @@ float im2col_get_pixel(float *im, int height, int width, int channels,
 //From Berkeley Vision's Caffe!
 //https://github.com/BVLC/caffe/blob/master/LICENSE
 /*
-输入：输入数据 data_im，输入数据的通道数channels、高度height、宽度width，卷积核大小ksize，步长stride，补零个数pad，输出data_col
+输入：输入数据 data_im
+     输入数据的通道数channels
+     高度height
+     宽度width
+     卷积核大小ksize
+     步长stride
+     补零个数pad
+     输出data_col
 功能：依次取data_im中与卷积核中每个元素点乘的所有位置排列成一维数组，大小为输出宽×输出高×size×size×输入channels。
      
      具体排列方式为：首先将输入数据中要和卷积核中第一个参数进行点乘的数据提取出来组成一行；然后将输入数据中要和卷积核中第二个参数进行点乘的数据提取出来组成一行；

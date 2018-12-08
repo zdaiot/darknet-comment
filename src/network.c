@@ -197,7 +197,7 @@ network *make_network(int n)
 
 /*
 输入：
-功能：实现该网络所有层的前向计算
+功能：输入一个batch的数据，实现该网络所有层的前向计算
 输出：
 返回：无
 */
@@ -214,10 +214,11 @@ void forward_network(network *netp)
     for(i = 0; i < net.n; ++i){
         net.index = i;
         layer l = net.layers[i];
+        // 相当于梯度归零操作，为下次输入一个batch的数据，做准备工作
         if(l.delta){
             fill_cpu(l.outputs * l.batch, 0, l.delta, 1);
         }
-        l.forward(l, net);
+        l.forward(l, net);  // 输入一个batch的数据，完成当前层的前向传播
         // forward函数中使用net.input作为前向计算的输入，net.input 指针指向该层的输出，为下次前向计算做准备；这里赋值是局部变量，当
         // 退出forward_network函数的时候，net.input 会变成之前的值？？？
         net.input = l.output;  
@@ -225,6 +226,7 @@ void forward_network(network *netp)
             net.truth = l.output;
         }
     }
+    // 当把所有层的一个batch数据前向计算都计算完毕时，计算损失值
     calc_network_cost(netp);
 }
 
@@ -278,6 +280,12 @@ int get_predicted_class_network(network *net)
     return max_index(net->output, net->outputs);
 }
 
+/*
+输入：
+功能：输入一个batch的数据，实现该网络所有层的反向传播
+输出：
+返回：无
+*/
 void backward_network(network *netp)
 {
 #ifdef GPU
@@ -308,11 +316,13 @@ void backward_network(network *netp)
 
 float train_network_datum(network *net)
 {
-    *net->seen += net->batch;  // seen 表示已经训练了多少数据
+    // seen 表示已经训练了多少数据，每次训练都是batch个数据，这里的net.batch为子batch,不是配置文件里的batch,而是 net.batch(完整batch) / net.subdivision 
+    *net->seen += net->batch;        
     net->train = 1;
     forward_network(net);
     backward_network(net);
     float error = *net->cost;
+    //在训练了一个完整的batch个数据后才会调用
     if(((*net->seen)/net->batch)%net->subdivisions == 0) update_network(net);
     return error;
 }

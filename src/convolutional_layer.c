@@ -198,10 +198,10 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
     l.type = CONVOLUTIONAL;
 
     l.groups = groups;
-    l.h = h;
-    l.w = w;
-    l.c = c;
-    l.n = n;
+    l.h = h;  // 输入数据的高
+    l.w = w;   // 输入数据的宽
+    l.c = c;  // 输入数据的通道数
+    l.n = n;  // filters的数量
     l.binary = binary;
     l.xnor = xnor;
     l.batch = batch;
@@ -242,7 +242,7 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
     l.inputs = l.w * l.h * l.c;  // 每次batch输入的大小
 
     l.output = calloc(l.batch*l.outputs, sizeof(float)); // 存放每组batch总输出
-    l.delta  = calloc(l.batch*l.outputs, sizeof(float));  // 存放每组batch总输出关于net(o = f(net), f为激活函数)的梯度
+    l.delta  = calloc(l.batch*l.outputs, sizeof(float));  // 存放损失函数关于每batch个样本的 z 的梯度
 
     l.forward = forward_convolutional_layer;   // 结构体中函数的应用
     l.backward = backward_convolutional_layer;
@@ -501,8 +501,8 @@ void backward_bias(float *bias_updates, float *delta, int batch, int n, int size
 
 /*
 输入：卷积层 l，网络参数 net
-功能：(一层)卷积层的前向计算
-输出：无
+功能：输入一个batch的数据，完成(一层)卷积层的前向计算
+输出：一个batch的输出 l.output
 返回：无
 说明：net.input 已经在外部network.c的forward_network函数中被赋值
 */
@@ -510,7 +510,7 @@ void forward_convolutional_layer(convolutional_layer l, network net)
 {
     int i, j;
 
-    fill_cpu(l.outputs*l.batch, 0, l.output, 1);  // 将l.output以0全部填充
+    fill_cpu(l.outputs*l.batch, 0, l.output, 1);  // 将l.output以0全部填充，防止上次输入batch个数据前向计算的结果对本次造成影响
 
     if(l.xnor){
         binarize_weights(l.weights, l.n, l.c/l.groups*l.size*l.size, l.binary_weights);
@@ -519,29 +519,46 @@ void forward_convolutional_layer(convolutional_layer l, network net)
         net.input = l.binary_input;
     }
 
-    int m = l.n/l.groups;  // l.n是filters数量，除以l.groups得到每组filters的数量
+    int m = l.n/l.groups;  // l.n是filters数量，除以l.groups得到每组含有多少个filters
     int k = l.size*l.size*l.c/l.groups;  // 将卷积核分组后，每个卷积核的参数总数
     int n = l.out_w*l.out_h; // 每次卷积输出的高和宽的乘积
-    for(i = 0; i < l.batch; ++i){  // 每次batch
+    for(i = 0; i < l.batch; ++i){  // 一个batch中的每一个样本
         for(j = 0; j < l.groups; ++j){ // 每组
             // 指针加上数值代表地址偏移，l.nweights/l.groups代表每组权重总数
             // l.weights = calloc(c/groups*n*size*size, sizeof(float));
             // 因为 *a 的取值和 i 无关，所以推测对于每组batch内，卷积核参数相同。例如batch=3，则在每个batch中，与输入数据卷积的卷积核是同一个卷积核
+            // 此时的 *a 指向的是当前样本的当前组的权重
             float *a = l.weights + j*l.nweights/l.groups;
             // 大小为 l.out_h*l.out_w*l.size*l.size*l.c,存放重排后的输入数据
             float *b = net.workspace;
-            // n*m表示每组每次卷积输出的大小，(i*l.groups + j) 表示进行了多少次卷积
+            // n*m表示每组每次卷积输出的大小，(i*l.groups + j) 表示进行了多少次卷积，所以 *b 表示当前样本当前组的输出位置
             float *c = l.output + (i*l.groups + j)*n*m;
-            // net.input 表示当前层的输入，l.c/l.groups*l.h*l.w表示每次每组输入的大小,所以 *im为当前batch每组的输入数据位置
+            // net.input 表示当前层的输入(batchsize 个样本)，l.c/l.groups*l.h*l.w表示每次每组输入的大小,所以 *im为当前样本当前组的输入数据位置
             float *im =  net.input + (i*l.groups + j)*l.c/l.groups*l.h*l.w;
             
             // 对图片进行重新排列，指针b 指向重新排列后的数据
             if (l.size == 1) {
+                // TODO: im的大小为l.c/l.groups*l.h*l.w，而下面gemm中b的大小为l.size*l.size*l.c/l.groups X l.out_w*l.out_h，当步长不为1或者有补零的时候，l.h*l.w不等于l.out_w*l.out_h
                 b = im;
             } else {
                 im2col_cpu(im, l.c/l.groups, l.h, l.w, l.size, l.stride, l.pad, b); // l.h, l.w 为输入大小
             }
-            // 广义矩阵乘积操作(gemm) C = ALPHA*A*B + BETA*C，这里ALPHA和BETA均取值为1
+            /*
+            M 每组filters的数量
+            N 每次卷积输出的高和宽的乘积
+            K 将卷积核分组后，每个卷积核的参数总数
+            ALPHA 广义矩阵乘积操作(gemm)参数
+            *A 每次batch每组权重数组的首地址
+            lda 将卷积核分组后，每个卷积核的参数总数
+            *B 重排后的图像矩阵
+            ldb 每次卷积输出的高和宽的乘积
+            BETA 广义矩阵乘积操作(gemm)参数
+            *C 每组每次卷积输出的数组首地址
+            ldc 每次卷积输出的高和宽的乘积，用于定位卷积输出数组元素的位置
+
+            广义矩阵乘积操作(gemm) C = ALPHA*A*B + BETA*C
+            这里ALPHA和BETA均取值为1，完成 l.c/l.groups 组卷积操作，怀疑此处的 BETA并没有什么作用，因此每次 c 均是全零的
+            */
             gemm(0,0,m,n,k,1,a,k,b,n,1,c,n);
         }
     }
@@ -558,7 +575,7 @@ void forward_convolutional_layer(convolutional_layer l, network net)
 
 /*
 输入：卷积层 l，网络参数 net
-功能：
+功能：一个batch的数据，完成卷积层的反向传播
 输出：
 返回：无
 说明：对于非输入层 net.delta 已经在外部network.c的backward_network函数中被赋值
@@ -580,32 +597,42 @@ void backward_convolutional_layer(convolutional_layer l, network net)
     }
 
     // net.delta 已经在外部network.c的backward_network函数中被赋值
-    for(i = 0; i < l.batch; ++i){  // 每个batch 
+    for(i = 0; i < l.batch; ++i){  // 每个样本
         for(j = 0; j < l.groups; ++j){ // 每组
-            float *a = l.delta + (i*l.groups + j)*m*k;
-            float *b = net.workspace;
+            // m*k为每个样本每组输出大小，所以 *a 为当前样本当前组的 delta值
+            float *a = l.delta + (i*l.groups + j)*m*k;   
+            float *b = net.workspace;   // net.workspace 可以看做为缓冲空间
+            // l.nweights/l.groups为每组的权重大小，又因为一个batch之内的相同组的权重相同，与i无关，所以 *c表示存储当前组权重更新的位置
             float *c = l.weight_updates + j*l.nweights/l.groups;
-
+            
+            // l.c/l.groups*l.h*l.w为每组输入的大小，所以 *im 为当前样本当前组的输入
             float *im  = net.input + (i*l.groups + j)*l.c/l.groups*l.h*l.w;
+            // l.c/l.groups*l.h*l.w为每组输入的大小，所以 *imd 为当前样本当前组的 delta 值
             float *imd = net.delta + (i*l.groups + j)*l.c/l.groups*l.h*l.w;
 
             if(l.size == 1){
+                // TODO:
                 b = im;
             } else {
-                im2col_cpu(im, l.c/l.groups, l.h, l.w, 
+                // l.c/l.groups 为每组卷积核的个数
+                im2col_cpu(im, l.c/l.groups, l.h, l.w,  
                         l.size, l.stride, l.pad, b);
             }
-
-            gemm(0,1,m,n,k,1,a,k,b,k,1,c,n);
+            // 因为这里的 *im 展开后有 out_c*out*w 列等于k的值，有l.size*l.size*l.c/l.groups行等于n的值，也就是说 *im 有 n*k列，所以需要转置
+            gemm(0,1,m,n,k,1,a,k,b,k,1,c,n);   // 这里beta=1也就是每次结果都加上C是为了将一个batch之内的所有损失函数关于 W 的导数进行求和
             // 当为输入层的时候，不需要求前一层的net.delta，在backward_network函数中没有被赋值，也就不会进入此循环
             if (net.delta) {
+                // *c表示当前组权重位置
                 a = l.weights + j*l.nweights/l.groups;
+                // *b 为当前样本当前组的 delta值
                 b = l.delta + (i*l.groups + j)*m*k;
-                c = net.workspace;
+                c = net.workspace;  // 下面beta的值等于0，会刷新掉当前net.workspace的值
                 if (l.size == 1) {
                     c = imd;
                 }
-
+                // a高度l.n/l.groups宽度为l.size*l.size*l.c/l.groups，也就是 m*n；b的高度为l.n/l.groups宽度为l.out_w*l.out_h也就是 m*k
+                // 所以a要加上转置，beta的值等于0
+                // TODO:
                 gemm(1,0,n,k,m,1,a,n,b,k,0,c,k);
 
                 if (l.size != 1) {
