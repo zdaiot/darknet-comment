@@ -1,5 +1,7 @@
 darknet是一个纯C写的框架，支持CUDA。与Tensorflow、Pytorch等大型框架，动辄就几十万行代码相比，darknet具有小型化的的特点。个人一直想知道深度学习框架是怎么实现的，虽然之前已经有人解读过darknet源代码并上传到GitHub了，但是我觉得还是自己看一遍比较好，所以就有了这个项目。
 
+改代码截止到2018年12月10日为官方最新的代码，官方的最新一次提价为`Latest commit 61c9d02  on 14 Sep`。
+
 目前，原理方面已经看到了反向传播，发现之前自己有些注释是错误的，还没来得及改，这里先在github备份一下，之后会不定期更新并更新之前的错误。
 
 > 本人语文水平有限，有的时候注释的也挺扯淡的。
@@ -63,12 +65,13 @@ record
 ```
 
 ## 疑问
-1) option_list.c中的`list *read_data_cfg(char *filename)`函数中的`strip(line);`为何可以改变line的值？即 float* 和 char *的区别
+- option_list.c中的`list *read_data_cfg(char *filename)`函数中的`strip(line);`为何可以改变line的值？即 float* 和 char *的区别
 答：该问题表述有误，实际并没有改变line的值(指向)，改变的是line值指向地址的值。
 
-2) 神经网络权重初始化问题
+- 神经网络权重初始化问题
 
-3) 卷积中偏置的数量以及作用
+- 卷积中偏置的数量以及作用
 答：每一个卷积核对应一个偏置(同一个batch中同一个卷积核也是一个参数)。作用为：增加卷积的非线性能力。
 
-4）batchnorm_layer.c中的forward_batchnorm_layer函数中 l.rolling_mean 与 l.rolling_variance 怎么求的
+- batchnorm_layer.c中的forward_batchnorm_layer函数中 l.rolling_mean 与 l.rolling_variance 怎么求的
+答：滚动平均法
