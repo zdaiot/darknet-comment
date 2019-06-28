@@ -12,7 +12,35 @@ darknet是一个纯C写的框架，支持CUDA。与Tensorflow、Pytorch等大型
 
 2019年6月27日：从上次更新到现在，中间忙了很多事情，也就没有更新。前段时间看到了这个框架[NumpyDL](https://github.com/oujago/NumpyDL)，使用纯Python和Numpy实现了基本的层、优化算法、激活函数等。从理解深度学习具体原理的角度出发，看这个框架比看darknet框架，难度更小且更加直观。所以对于想快速深入了解深度学习工作原理的同学，推荐阅读。
 
-工程目录下有darknet.vsdx文件，详细介绍了很多种数据结构。在阅读源代码的时候，可以参考食用。之后我会将截图放在这里，方便大家在Ubuntu下食用。
+工程目录下有darknet.vsdx文件，详细介绍了很多种数据结构。在阅读源代码的时候，可以参考食用。~~~之后我会将截图放在这里，方便大家在Ubuntu下食用。~~~该darknet.vsdx各个页面的png格式放置在`picture`文件夹下。预览如下：
+
+读取.data文件的堆内存分配示意图
+
+![](picture/data.png)
+
+读取.list文件的堆内存分配示意图
+
+![](picture/list.png)
+
+读取.cfg文件的堆内存分配示意图
+
+![](picture/cfg.png)
+
+解析network*
+
+![](picture/network.png)
+
+CNN示意图
+
+![](picture/cnn.png)
+
+geem操作示意图
+
+![](picture/geem.png)
+
+batchnorm操作示意图
+
+![](picture/batchnorm.png)
 
 阅读源代码之前，有一个技能是必备的，那就是调试，那么我就先介绍一下是如何调试darknet吧！
 
