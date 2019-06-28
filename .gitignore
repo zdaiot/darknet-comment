@@ -2,7 +2,6 @@
 *.dSYM
 *.csv
 *.out
-*.png
 *.jpg
 *.pyc
 old/
@@ -16,6 +15,7 @@ convnet/
 decaf/
 submission/
 cfg/
+data/
 darknet
 .fuse*
 
