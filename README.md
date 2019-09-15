@@ -6,7 +6,7 @@ darknet是一个纯C写的框架，支持CUDA。与Tensorflow、Pytorch等大型
 
 > 本人语文水平有限，注释不详细的地方欢迎大家指正。
 
-2018年12月10日：马上就要期末考试了，要开始预习功课了。现在基本完成了卷积层的注释，在注释的过程中，我对C语言的指针和内存管理有了很多新的理解，中间也做了很多笔记，详细可以见[这里](https://www.zdaiot.com/categories/C/)；同时对深度学习反向传播过程进行了详细推导，具体可以见[这里](https://www.zdaiot.com/categories/DeepLearning/)，强烈推荐想深入了解深度学习反向传播过程的同学看[卷积神经网络前向与反向传播](https://www.zdaiot.com/DeepLearning/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C%E5%89%8D%E5%90%91%E4%B8%8E%E5%8F%8D%E5%90%91%E4%BC%A0%E6%92%AD/)和[深度神经网络-DNN](https://www.zdaiot.com/DeepLearning/%E6%B7%B1%E5%BA%A6%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C-DNN/)。
+2018年12月10日：马上就要期末考试了，要开始预习功课了。现在基本完成了卷积层的注释，在注释的过程中，我对C语言的指针和内存管理有了很多新的理解，中间也做了很多笔记，详细可以见[这里](https://www.zdaiot.com/categories/C/)；同时对深度学习反向传播过程进行了详细推导，强烈推荐想深入了解深度学习反向传播过程的同学看[卷积神经网络前向与反向传播](http://www.zdaiot.com/MachineLearning/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/%E5%8D%B7%E7%A7%AF%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C%E5%89%8D%E5%90%91%E4%B8%8E%E5%8F%8D%E5%90%91%E4%BC%A0%E6%92%AD/)和[深度神经网络-DNN](http://www.zdaiot.com/MachineLearning/神经网络/深度神经网络(DNN)/)。
 
 > 对于这两篇文章中出现的问题和不当之处，欢迎大家指正。
 
